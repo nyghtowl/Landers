@@ -77,7 +77,7 @@ public class JavaImgClassification {
                 .regularization(true)
                 .l2(0.04)
                 .useDropConnect(true)
-                .list()
+                .list(10)
                 .layer(0, new ConvolutionLayer.Builder(5, 5)
                         .name("cnn1")
                         .nIn(channels)
@@ -143,7 +143,7 @@ public class JavaImgClassification {
                 .l2(5 * 1e-4)
                 .momentum(0.9)
                 .miniBatch(false)
-                .list()
+                .list(13)
                 //conv1
                 .layer(0, new ConvolutionLayer.Builder(new int[]{11, 11}, new int[]{4, 4}, new int[]{3, 3})
                         .name("cnn1")

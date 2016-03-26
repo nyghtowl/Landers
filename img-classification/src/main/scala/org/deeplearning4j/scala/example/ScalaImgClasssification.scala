@@ -69,7 +69,7 @@ object ScalaImgClasssification {
       .regularization(true)
       .l2(0.04)
       .optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT)
-      .list()
+      .list(10)
       .layer(0, new ConvolutionLayer.Builder(5, 5)
         .name("cnn1")
         .nIn(channels)
