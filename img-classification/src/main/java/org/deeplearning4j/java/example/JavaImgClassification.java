@@ -23,6 +23,8 @@ import org.deeplearning4j.nn.conf.layers.*;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.nn.weights.WeightInit;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
+import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.api.ops.impl.indexaccum.IMax;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
@@ -32,6 +34,7 @@ import org.slf4j.LoggerFactory;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.util.List;
 import java.util.Random;
 
 public class JavaImgClassification {
@@ -45,7 +48,7 @@ public class JavaImgClassification {
     protected static int batchSize = 20;
     protected static int listenerFreq = 1;
     protected static int iterations = 1;
-    protected static int epochs = 5;
+    protected static int epochs = 1;
 
     public static void main(String[] args) throws Exception {
         File mainPath = new File(System.getProperty("user.home"), "data/animals");
@@ -128,14 +131,15 @@ public class JavaImgClassification {
 
         recordReader.initialize(testData);
         dataIter = new RecordReaderDataSetIterator(recordReader, 20, 1, outputNum);
-        DataSet ds = dataIter.next();
+        DataSet testDataSet = dataIter.next();
         Evaluation eval = new Evaluation(recordReader.getLabels());
-        eval.eval(ds.getLabels(), network.output(ds.getFeatureMatrix(), Layer.TrainingMode.TEST));
+        eval.eval(testDataSet.getLabels(), network.output(testDataSet.getFeatureMatrix(), Layer.TrainingMode.TEST));
         log.info(eval.stats(true));
 
-        // TODO single output example
-//        INDArray output = network.output(testInput.get(0));
-//        eval.eval(testLabels.get(0), output);
+        // Check prediction
+        String expectedResult = testDataSet.getLabelName(0);
+        List<String> predict = network.predict(testDataSet);
+        String result = predict.get(0);
 
         String basePath = FilenameUtils.concat(System.getProperty("user.dir"), "src/main/resources/");
         String confPath = FilenameUtils.concat(basePath, "TinyModel-conf.json");
