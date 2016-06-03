@@ -4,26 +4,25 @@ import java.io.{DataOutputStream, File, FileOutputStream, IOException}
 import java.util.Random
 
 import org.apache.commons.io.{FileUtils, FilenameUtils}
+import org.canova.api.io.filters.BalancedPathFilter
+import org.canova.api.io.labels.ParentPathLabelGenerator
 import org.canova.api.records.reader.RecordReader
-import org.canova.api.split.LimitFileSplit
+import org.canova.api.split.{FileSplit, InputSplit}
 import org.canova.image.loader.BaseImageLoader
 import org.canova.image.recordreader.ImageRecordReader
 import org.deeplearning4j.datasets.canova.RecordReaderDataSetIterator
-import org.deeplearning4j.datasets.iterator.DataSetIterator
+import org.deeplearning4j.datasets.iterator.{DataSetIterator, MultipleEpochsIterator}
 import org.deeplearning4j.eval.Evaluation
 import org.deeplearning4j.nn.api.OptimizationAlgorithm
-import org.deeplearning4j.nn.conf.{GradientNormalization, MultiLayerConfiguration, NeuralNetConfiguration, Updater}
 import org.deeplearning4j.nn.conf.layers.{ConvolutionLayer, DenseLayer, LocalResponseNormalization, OutputLayer, SubsamplingLayer}
+import org.deeplearning4j.nn.conf.{GradientNormalization, MultiLayerConfiguration, NeuralNetConfiguration, Updater}
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork
 import org.deeplearning4j.nn.weights.WeightInit
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener
-import org.nd4j.linalg.api.ndarray.INDArray
-import org.nd4j.linalg.dataset.{DataSet, SplitTestAndTrain}
+import org.nd4j.linalg.dataset.DataSet
 import org.nd4j.linalg.factory.Nd4j
 import org.nd4j.linalg.lossfunctions.LossFunctions
 
-import scala.collection.mutable.ListBuffer
-import collection.JavaConversions._
 
 object ScalaImgClasssification {
 
@@ -34,42 +33,45 @@ object ScalaImgClasssification {
   val numExamples = 80
   val outputNum = 4
   val batchSize = 20
-  val listenerFreq = 5
-  val appendLabels = true
-  val iterations = 2
-  val epochs = 2
-  val splitTrainNum = 10
+  val listenerFreq = 1
+  val iterations = 1
+  val epochs = 5
 
 
   def main(args: Array[String]) {
     val basePath = FilenameUtils.concat(System.getProperty("user.dir"), "src/main/resources/")
     val mainPath: File = new File(basePath, "animals")
-    val labels: List[String] = List("bear", "deer", "duck", "turtle")
 
-    val recordReader: RecordReader = new ImageRecordReader(width, height, channels, appendLabels)
+    // load data
+    val recordReader: RecordReader = new ImageRecordReader(width, height, channels, new ParentPathLabelGenerator())
+    val fileSplit: FileSplit = new FileSplit(mainPath, BaseImageLoader.ALLOWED_FORMATS, new Random(123))
+    val pathFilter: BalancedPathFilter = new BalancedPathFilter(new Random(123), BaseImageLoader.ALLOWED_FORMATS, new ParentPathLabelGenerator, numExamples, outputNum, 0, batchSize)
+    val inputSplit: Array[InputSplit] = fileSplit.sample(pathFilter, 80, 20)
+    val trainData: InputSplit = inputSplit(0)
+    val testData: InputSplit = inputSplit(1)
     try {
-      recordReader.initialize(
-        new LimitFileSplit(mainPath, BaseImageLoader.ALLOWED_FORMATS, numExamples, outputNum, null, new Random(123)))
+      recordReader.initialize(trainData)
     } catch {
       case ioe: IOException => ioe.printStackTrace()
       case e: InterruptedException => e.printStackTrace()
     }
-    val dataIter: DataSetIterator = new RecordReaderDataSetIterator(recordReader, batchSize, -1, outputNum)
+    var dataIter: DataSetIterator = new RecordReaderDataSetIterator(recordReader, batchSize, -1, outputNum)
 
-
+    // build model
     val confTiny: MultiLayerConfiguration = new NeuralNetConfiguration.Builder()
       .seed(seed)
       .iterations(iterations)
       .activation("relu")
       .weightInit(WeightInit.XAVIER)
       .gradientNormalization(GradientNormalization.RenormalizeL2PerLayer)
-      .updater(Updater.SGD)
+      .updater(Updater.NESTEROVS)
       .learningRate(0.01)
       .momentum(0.9)
       .regularization(true)
       .l2(0.04)
       .optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT)
-      .list(10)
+      .useDropConnect(true)
+      .list()
       .layer(0, new ConvolutionLayer.Builder(5, 5)
         .name("cnn1")
         .nIn(channels)
@@ -115,42 +117,21 @@ object ScalaImgClasssification {
       .backprop(true).pretrain(false)
       .cnnInputSize(height, width, channels).build()
 
-
     val network: MultiLayerNetwork = new MultiLayerNetwork(confTiny)
     network.init()
-
     network.setListeners(new ScoreIterationListener(listenerFreq))
 
-    val testInput = new ListBuffer[INDArray]()
-    val testLabels = new ListBuffer[INDArray]()
+    // train
+    val multDataIter: MultipleEpochsIterator = new MultipleEpochsIterator(epochs, dataIter)
+    network.fit(multDataIter)
 
-    while (dataIter.hasNext()) {
-      val dsNext: DataSet = dataIter.next()
-      dsNext.scale()
-      val trainTest: SplitTestAndTrain = dsNext.splitTestAndTrain(splitTrainNum, new Random(seed))
-      val trainInput: DataSet = trainTest.getTrain() // get feature matrix and labels for training
-      testInput += trainTest.getTest().getFeatureMatrix()
-      testLabels += trainTest.getTest().getLabels()
-      network.fit(trainInput)
-    }
-
-    // Assumes 1 epoch completed already
-    for (i <- 1 until epochs) {
-      dataIter.reset()
-      while (dataIter.hasNext()) {
-        val dsNext: DataSet = dataIter.next()
-        val trainTest: SplitTestAndTrain = dsNext.splitTestAndTrain(splitTrainNum, new Random(seed))
-        val trainInput: DataSet = trainTest.getTrain()
-        network.fit(trainInput)
-      }
-    }
-
-    val eval = new Evaluation(labels)
-    for(i <- 0 until testInput.length) {
-      val output: INDArray = network.output(testInput.get(i))
-      eval.eval(testLabels.get(i), output)
-    }
-    print(eval.stats())
+    // test
+    recordReader.initialize(testData)
+    dataIter = new RecordReaderDataSetIterator(recordReader, 20, 1, outputNum)
+    val ds: DataSet = dataIter.next
+    val eval = new Evaluation(recordReader.getLabels)
+    eval.eval(ds.getLabels, network.output(ds.getFeatureMatrix))
+    print(eval.stats(true))
 
     val confPath = FilenameUtils.concat(basePath, "TinyModel-conf.json")
     val paramPath = FilenameUtils.concat(basePath, "TinyModel-params.bin")
