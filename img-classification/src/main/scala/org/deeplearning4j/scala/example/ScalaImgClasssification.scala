@@ -1,9 +1,9 @@
 package org.deeplearning4j.scala.example
 
-import java.io.{DataOutputStream, File, FileOutputStream, IOException}
+import java.io.{File, IOException}
 import java.util.Random
 
-import org.apache.commons.io.{FileUtils, FilenameUtils}
+import org.apache.commons.io.{FilenameUtils}
 import org.canova.api.io.filters.BalancedPathFilter
 import org.canova.api.io.labels.ParentPathLabelGenerator
 import org.canova.api.records.reader.RecordReader
@@ -19,8 +19,8 @@ import org.deeplearning4j.nn.conf.{GradientNormalization, MultiLayerConfiguratio
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork
 import org.deeplearning4j.nn.weights.WeightInit
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener
+import org.deeplearning4j.util.NetSaverLoaderUtils
 import org.nd4j.linalg.dataset.DataSet
-import org.nd4j.linalg.factory.Nd4j
 import org.nd4j.linalg.lossfunctions.LossFunctions
 
 
@@ -133,20 +133,9 @@ object ScalaImgClasssification {
     eval.eval(ds.getLabels, network.output(ds.getFeatureMatrix))
     print(eval.stats(true))
 
-    val confPath = FilenameUtils.concat(basePath, "TinyModel-conf.json")
-    val paramPath = FilenameUtils.concat(basePath, "TinyModel-params.bin")
+    NetSaverLoaderUtils.saveNetworkAndParameters(network, basePath)
+    NetSaverLoaderUtils.saveUpdators(network, basePath)
 
-    // save parameters
-    try {
-      val dos: DataOutputStream = new DataOutputStream(new FileOutputStream(paramPath))
-      Nd4j.write(network.params(), dos)
-      dos.flush()
-      dos.close()
-      // save model configuration
-      FileUtils.write(new File(confPath), network.conf().toJson())
-    } catch {
-      case ioe: IOException => ioe.printStackTrace()
-    }
   }
 }
 

@@ -1,6 +1,5 @@
 package org.deeplearning4j.java.example;
 
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
 import org.canova.api.io.filters.BalancedPathFilter;
 import org.canova.api.io.labels.ParentPathLabelGenerator;
@@ -23,17 +22,13 @@ import org.deeplearning4j.nn.conf.layers.*;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.nn.weights.WeightInit;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
-import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.api.ops.impl.indexaccum.IMax;
+import org.deeplearning4j.util.NetSaverLoaderUtils;
 import org.nd4j.linalg.dataset.DataSet;
-import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.util.List;
 import java.util.Random;
 
@@ -140,17 +135,11 @@ public class JavaImgClassification {
         String expectedResult = testDataSet.getLabelName(0);
         List<String> predict = network.predict(testDataSet);
         String result = predict.get(0);
+        System.out.print("For a single example that is labeled " + expectedResult+ " the model predicted " + result);
 
         String basePath = FilenameUtils.concat(System.getProperty("user.dir"), "src/main/resources/");
-        String confPath = FilenameUtils.concat(basePath, "TinyModel-conf.json");
-        String paramPath = FilenameUtils.concat(basePath, "TinyModel-params.bin");
-
-        DataOutputStream dos = new DataOutputStream(new FileOutputStream(paramPath));
-        Nd4j.write(network.params(), dos);
-        dos.flush();
-        dos.close();
-        // save model configuration
-        FileUtils.write(new File(confPath), network.conf().toJson());
+        NetSaverLoaderUtils.saveNetworkAndParameters(network, basePath);
+        NetSaverLoaderUtils.saveUpdators(network, basePath);
     }
 
 }
