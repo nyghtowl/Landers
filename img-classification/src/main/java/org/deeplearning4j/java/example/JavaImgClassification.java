@@ -155,7 +155,7 @@ public class JavaImgClassification {
         log.info("Evaluate model....");
         recordReader.initialize(testData);
         dataIter = new RecordReaderDataSetIterator(recordReader, 20, 1, numLabels);
-        Evaluation eval = network.evaluate(dataIter);
+        Evaluation eval = network.evaluate(dataIter, dataIter.getLabels());
         log.info(eval.stats(true));
 
         // Example on how to get predict results with trained model

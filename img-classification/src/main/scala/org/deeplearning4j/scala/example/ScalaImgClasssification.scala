@@ -136,7 +136,7 @@ object ScalaImgClasssification {
     // Evaluate
     recordReader.initialize(testData)
     dataIter = new RecordReaderDataSetIterator(recordReader, 20, 1, numLabels)
-    val eval = network.evaluate(dataIter)
+    val eval = network.evaluate(dataIter, dataIter.getLabels())
     print(eval.stats(true))
 
     // Predict
