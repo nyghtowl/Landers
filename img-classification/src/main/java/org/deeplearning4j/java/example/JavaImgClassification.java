@@ -8,6 +8,10 @@ import org.canova.api.split.FileSplit;
 import org.canova.api.split.InputSplit;
 import org.canova.image.loader.BaseImageLoader;
 import org.canova.image.recordreader.ImageRecordReader;
+import org.canova.image.transform.FlipImageTransform;
+import org.canova.image.transform.ImageTransform;
+import org.canova.image.transform.MultiImageTransform;
+import org.canova.image.transform.WarpImageTransform;
 import org.deeplearning4j.datasets.canova.RecordReaderDataSetIterator;
 import org.deeplearning4j.datasets.iterator.DataSetIterator;
 import org.deeplearning4j.datasets.iterator.MultipleEpochsIterator;
@@ -34,30 +38,54 @@ import java.util.Random;
 
 public class JavaImgClassification {
     protected static final Logger log = LoggerFactory.getLogger(JavaImgClassification.class);
-    protected static long seed = 123;
+
+    protected static int seed = 42;
     protected static int height = 50;
     protected static int width = 50;
     protected static int channels = 3;
     protected static int numExamples = 80;
-    protected static int outputNum = 4;
+    protected static int numLabels = 4;
     protected static int batchSize = 20;
     protected static int listenerFreq = 1;
     protected static int iterations = 1;
     protected static int epochs = 1;
+    protected static double splitTrainTest = 0.8;
+    protected static Random rng = new Random(seed);
 
     public static void main(String[] args) throws Exception {
-        File mainPath = new File(System.getProperty("user.home"), "data/animals");
-        RecordReader recordReader = new ImageRecordReader(width, height, channels, new ParentPathLabelGenerator());
-        FileSplit fileSplit = new FileSplit(mainPath, BaseImageLoader.ALLOWED_FORMATS, new Random(123));
-        BalancedPathFilter pathFilter = new BalancedPathFilter(new Random(123), BaseImageLoader.ALLOWED_FORMATS, new ParentPathLabelGenerator(), numExamples, outputNum, 0, batchSize);
-        InputSplit[] inputSplit = fileSplit.sample(pathFilter, 80, 20);
+
+        log.info("Load data....");
+        /**
+         * Data Setup -> organize and limit data file paths:
+         *  - mainPath = path to image files
+         *  - fileSplit = define basic dataset split with limits on format
+         *  - pathFilter = define additional file load filter to limit size and balance batch content
+         **/
+        File mainPath = new File(System.getProperty("user.dir"), "src/main/resources/");
+        FileSplit fileSplit = new FileSplit(mainPath, BaseImageLoader.ALLOWED_FORMATS, rng);
+        BalancedPathFilter pathFilter = new BalancedPathFilter(rng, BaseImageLoader.ALLOWED_FORMATS, new ParentPathLabelGenerator(), numExamples, numLabels, 0, batchSize);
+
+        /**
+         * Data Setup -> train test split
+         *  - inputSplit = define train and test split
+         **/
+        InputSplit[] inputSplit = fileSplit.sample(pathFilter, numExamples*(1+splitTrainTest),  numExamples*(1-splitTrainTest));
         InputSplit trainData = inputSplit[0];
         InputSplit testData = inputSplit[1];
 
+        /**
+         * Data Setup -> define how to load data into net:
+         *  - recordReader = the reader that loads and converts image data pass in inputSplit to initialize
+         *  - dataIter = a generator that only loads one batch at a time into memory to save memory
+         *  - trainIter = uses MultipleEpochsIterator to ensure model runs through the data for all epochs
+         **/
+        RecordReader recordReader = new ImageRecordReader(width, height, channels, new ParentPathLabelGenerator());
         recordReader.initialize(trainData);
-        DataSetIterator dataIter = new RecordReaderDataSetIterator(recordReader, batchSize, 1, outputNum);
+        DataSetIterator dataIter = new RecordReaderDataSetIterator(recordReader, batchSize, 1, numLabels);
+        MultipleEpochsIterator trainIter = new MultipleEpochsIterator(epochs, dataIter);
 
-        // Tiny Config
+        log.info("Build model....");
+        // Tiny model configuration
         MultiLayerConfiguration confTiny = new NeuralNetConfiguration.Builder()
                 .seed(seed)
                 .iterations(iterations)
@@ -111,7 +139,7 @@ public class JavaImgClassification {
                         .dropOut(0.5)
                         .build())
                 .layer(9, new OutputLayer.Builder(LossFunctions.LossFunction.NEGATIVELOGLIKELIHOOD)
-                        .nOut(outputNum)
+                        .nOut(numLabels)
                         .activation("softmax")
                         .build())
                 .backprop(true).pretrain(false)
@@ -121,25 +149,29 @@ public class JavaImgClassification {
         network.init();
         network.setListeners(new ScoreIterationListener(listenerFreq));
 
-        MultipleEpochsIterator multDataIter = new MultipleEpochsIterator(epochs, dataIter);
-        network.fit(multDataIter);
+        log.info("Train model....");
+        network.fit(trainIter);
 
+        log.info("Evaluate model....");
         recordReader.initialize(testData);
-        dataIter = new RecordReaderDataSetIterator(recordReader, 20, 1, outputNum);
-        DataSet testDataSet = dataIter.next();
-        Evaluation eval = new Evaluation(recordReader.getLabels());
-        eval.eval(testDataSet.getLabels(), network.output(testDataSet.getFeatureMatrix(), Layer.TrainingMode.TEST));
+        dataIter = new RecordReaderDataSetIterator(recordReader, 20, 1, numLabels);
+        Evaluation eval = network.evaluate(dataIter);
         log.info(eval.stats(true));
 
-        // Check prediction
+        // Example on how to get predict results with trained model
+        dataIter.reset();
+        DataSet testDataSet = dataIter.next();
         String expectedResult = testDataSet.getLabelName(0);
         List<String> predict = network.predict(testDataSet);
-        String result = predict.get(0);
-        System.out.print("For a single example that is labeled " + expectedResult+ " the model predicted " + result);
+        String modelResult = predict.get(0);
+        System.out.print("For a single example that is labeled " + expectedResult+ " the model predicted " + modelResult + "\n");
 
+        log.info("Save model....");
         String basePath = FilenameUtils.concat(System.getProperty("user.dir"), "src/main/resources/");
         NetSaverLoaderUtils.saveNetworkAndParameters(network, basePath);
         NetSaverLoaderUtils.saveUpdators(network, basePath);
-    }
 
+        log.info("****************Example finished********************");
+
+    }
 }

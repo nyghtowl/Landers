@@ -1,6 +1,7 @@
 package org.deeplearning4j.scala.example
 
 import java.io.{File, IOException}
+import java.util
 import java.util.Random
 
 import org.apache.commons.io.{FilenameUtils}
@@ -26,38 +27,46 @@ import org.nd4j.linalg.lossfunctions.LossFunctions
 
 object ScalaImgClasssification {
 
-  val seed = 123
+  val seed = 42
   val height = 50
   val width = 50
   val channels = 3
   val numExamples = 80
-  val outputNum = 4
+  val numLabels = 4
   val batchSize = 20
   val listenerFreq = 1
   val iterations = 1
   val epochs = 5
+  val splitTrainTest = 0.8
+  val rng = new Random(seed);
 
 
   def main(args: Array[String]) {
+
     val basePath = FilenameUtils.concat(System.getProperty("user.dir"), "src/main/resources/")
     val mainPath: File = new File(basePath, "animals")
 
-    // load data
+    // Define how to filter and load data into batches
     val recordReader: RecordReader = new ImageRecordReader(width, height, channels, new ParentPathLabelGenerator())
-    val fileSplit: FileSplit = new FileSplit(mainPath, BaseImageLoader.ALLOWED_FORMATS, new Random(123))
-    val pathFilter: BalancedPathFilter = new BalancedPathFilter(new Random(123), BaseImageLoader.ALLOWED_FORMATS, new ParentPathLabelGenerator, numExamples, outputNum, 0, batchSize)
-    val inputSplit: Array[InputSplit] = fileSplit.sample(pathFilter, 80, 20)
+    val fileSplit: FileSplit = new FileSplit(mainPath, BaseImageLoader.ALLOWED_FORMATS,rng)
+    val pathFilter: BalancedPathFilter = new BalancedPathFilter(rng, BaseImageLoader.ALLOWED_FORMATS, new ParentPathLabelGenerator, numExamples, numLabels, 0, batchSize)
+
+    // Define train and test split
+    val inputSplit: Array[InputSplit] = fileSplit.sample(pathFilter, numExamples * (1 + splitTrainTest), numExamples * (1 - splitTrainTest))
     val trainData: InputSplit = inputSplit(0)
     val testData: InputSplit = inputSplit(1)
+
+    // Define how to load data into network
     try {
       recordReader.initialize(trainData)
     } catch {
       case ioe: IOException => ioe.printStackTrace()
       case e: InterruptedException => e.printStackTrace()
     }
-    var dataIter: DataSetIterator = new RecordReaderDataSetIterator(recordReader, batchSize, -1, outputNum)
+    var dataIter: DataSetIterator = new RecordReaderDataSetIterator(recordReader, batchSize, 1, numLabels)
+    val multDataIter: MultipleEpochsIterator = new MultipleEpochsIterator(epochs, dataIter)
 
-    // build model
+    // Build model based on tiny model configuration paper
     val confTiny: MultiLayerConfiguration = new NeuralNetConfiguration.Builder()
       .seed(seed)
       .iterations(iterations)
@@ -111,7 +120,7 @@ object ScalaImgClasssification {
         .dropOut(0.5)
         .build())
       .layer(9, new OutputLayer.Builder(LossFunctions.LossFunction.NEGATIVELOGLIKELIHOOD)
-        .nOut(outputNum)
+        .nOut(numLabels)
         .activation("softmax")
         .build())
       .backprop(true).pretrain(false)
@@ -121,18 +130,24 @@ object ScalaImgClasssification {
     network.init()
     network.setListeners(new ScoreIterationListener(listenerFreq))
 
-    // train
-    val multDataIter: MultipleEpochsIterator = new MultipleEpochsIterator(epochs, dataIter)
+    // Train
     network.fit(multDataIter)
 
-    // test
+    // Evaluate
     recordReader.initialize(testData)
-    dataIter = new RecordReaderDataSetIterator(recordReader, 20, 1, outputNum)
-    val ds: DataSet = dataIter.next
-    val eval = new Evaluation(recordReader.getLabels)
-    eval.eval(ds.getLabels, network.output(ds.getFeatureMatrix))
+    dataIter = new RecordReaderDataSetIterator(recordReader, 20, 1, numLabels)
+    val eval = network.evaluate(dataIter)
     print(eval.stats(true))
 
+    // Predict
+    dataIter.reset()
+    val testDataSet: DataSet = dataIter.next
+    val expectedResult: String = testDataSet.getLabelName(0)
+    val predict: util.List[String] = network.predict(testDataSet)
+    val modelResult: String = predict.get(0)
+    System.out.print("For a single example that is labeled " + expectedResult + " the model predicted " + modelResult + "\n")
+
+    // Save model and parameters
     NetSaverLoaderUtils.saveNetworkAndParameters(network, basePath)
     NetSaverLoaderUtils.saveUpdators(network, basePath)
 
