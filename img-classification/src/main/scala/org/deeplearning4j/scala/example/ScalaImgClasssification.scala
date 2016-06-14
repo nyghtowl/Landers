@@ -13,7 +13,6 @@ import org.canova.image.loader.BaseImageLoader
 import org.canova.image.recordreader.ImageRecordReader
 import org.deeplearning4j.datasets.canova.RecordReaderDataSetIterator
 import org.deeplearning4j.datasets.iterator.{DataSetIterator, MultipleEpochsIterator}
-import org.deeplearning4j.eval.Evaluation
 import org.deeplearning4j.nn.api.OptimizationAlgorithm
 import org.deeplearning4j.nn.conf.layers.{ConvolutionLayer, DenseLayer, LocalResponseNormalization, OutputLayer, SubsamplingLayer}
 import org.deeplearning4j.nn.conf.{GradientNormalization, MultiLayerConfiguration, NeuralNetConfiguration, Updater}
@@ -38,7 +37,8 @@ object ScalaImgClasssification {
   val iterations = 1
   val epochs = 5
   val splitTrainTest = 0.8
-  val rng = new Random(seed);
+  val rng = new Random(seed)
+  val labelPosition = 1
 
 
   def main(args: Array[String]) {
@@ -63,7 +63,7 @@ object ScalaImgClasssification {
       case ioe: IOException => ioe.printStackTrace()
       case e: InterruptedException => e.printStackTrace()
     }
-    var dataIter: DataSetIterator = new RecordReaderDataSetIterator(recordReader, batchSize, 1, numLabels)
+    var dataIter: DataSetIterator = new RecordReaderDataSetIterator(recordReader, batchSize, labelPosition, numLabels)
     val multDataIter: MultipleEpochsIterator = new MultipleEpochsIterator(epochs, dataIter)
 
     // Build model based on tiny model configuration paper

@@ -8,16 +8,11 @@ import org.canova.api.split.FileSplit;
 import org.canova.api.split.InputSplit;
 import org.canova.image.loader.BaseImageLoader;
 import org.canova.image.recordreader.ImageRecordReader;
-import org.canova.image.transform.FlipImageTransform;
-import org.canova.image.transform.ImageTransform;
-import org.canova.image.transform.MultiImageTransform;
-import org.canova.image.transform.WarpImageTransform;
 import org.deeplearning4j.datasets.canova.RecordReaderDataSetIterator;
 import org.deeplearning4j.datasets.iterator.DataSetIterator;
 import org.deeplearning4j.datasets.iterator.MultipleEpochsIterator;
 import org.deeplearning4j.eval.Evaluation;
 import org.deeplearning4j.nn.api.*;
-import org.deeplearning4j.nn.api.Layer;
 import org.deeplearning4j.nn.conf.GradientNormalization;
 import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
@@ -48,7 +43,7 @@ public class JavaImgClassification {
     protected static int batchSize = 20;
     protected static int listenerFreq = 1;
     protected static int iterations = 1;
-    protected static int epochs = 1;
+    protected static int epochs = 5;
     protected static double splitTrainTest = 0.8;
     protected static Random rng = new Random(seed);
 
